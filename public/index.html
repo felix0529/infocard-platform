@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>身份信息管理 · fj_id_card</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234353f7'/%3E%3Cpath d='M9 23V9h5.2c3.4 0 5.8 2.3 5.8 6.1S17.6 23 14.2 23H9zm4.8-8.3v4.2h.5c1.4 0 2.3-.9 2.3-2.1s-.9-2.1-2.3-2.1h-.5z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app" class="app sidebar-layout">
+    <!-- 左侧 Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="主导航">
+      <div class="sidebar-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="3" y="5" width="18" height="14" rx="2.5"/>
+            <circle cx="9" cy="11" r="2"/>
+            <path d="M6.5 15.5c.7-1.4 1.6-2 2.5-2s1.8.6 2.5 2"/>
+          </svg>
+        </span>
+        <div class="brand-text">
+          <h1>身份信息管理平台</h1>
+        </div>
+        <button class="sidebar-toggle" id="sidebarToggle" title="折叠/展开菜单" aria-label="折叠/展开菜单">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav" id="navTabs">
+        <div class="nav-group">
+          <div class="nav-group-title">总览</div>
+          <button class="nav-item" id="navDash" data-view="dashboard">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+            </span>
+            <span class="nav-label">数据看板</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-title">管理</div>
+          <button class="nav-item active" id="navList" data-view="list">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+            </span>
+            <span class="nav-label">人员列表</span>
+          </button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-group-title">系统</div>
+          <button class="nav-item" id="navSysUsers" data-view="users">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            <span class="nav-label">用户管理</span>
+          </button>
+          <button class="nav-item" id="navSysRoles" data-view="roles">
+            <span class="nav-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
+            <span class="nav-label">角色管理</span>
+          </button>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- 主区域 -->
+    <div class="layout-main">
+      <!-- 顶部 Header -->
+      <header class="page-header">
+        <div class="page-header-left">
+          <button class="header-toggle" id="headerToggle" title="折叠/展开菜单" aria-label="折叠/展开菜单">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="page-title">
+            <h2 id="pageTitle">人员列表</h2>
+            <span class="page-breadcrumb" id="pageBreadcrumb">首页 / 管理 / 人员列表</span>
+          </div>
+        </div>
+        <div class="page-header-right">
+          <span id="modeBadge" class="mode-badge" data-mode="demo">
+            <span class="mode-dot"></span><span id="modeText">加载中…</span>
+          </span>
+          <button class="btn btn-ghost" id="btnRefresh" aria-label="刷新数据">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.3M21 3v6h-6"/></svg>
+            <span>刷新</span>
+          </button>
+
+          <!-- 右上角用户菜单 -->
+          <div class="user-menu" id="userMenu">
+            <button class="user-chip user-chip-btn" id="userBadge" type="button" aria-haspopup="true" aria-expanded="false"></button>
+            <div class="user-dropdown" id="userDropdown" hidden>
+              <div class="user-dd-head">
+                <span class="user-dd-avatar" id="ddAvatar">?</span>
+                <div class="user-dd-meta">
+                  <b id="ddName">-</b>
+                  <span id="ddRole">-</span>
+                </div>
+              </div>
+              <button class="user-dd-item" id="btnChangePwd" type="button">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                修改密码
+              </button>
+              <div class="user-dd-sep"></div>
+              <button class="user-dd-item danger" id="btnLogout" type="button">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+                退出登录
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <!-- ===== 视图：人员列表 ===== -->
+        <section class="view" id="viewList" data-view="list">
+          <section class="toolbar">
+            <div class="search">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+              <input id="searchInput" type="search" placeholder="搜索姓名 / 身份证号 / 手机号…" autocomplete="off" />
+            </div>
+            <div class="toolbar-right">
+              <div class="filters" id="filters" role="tablist" aria-label="按关系筛选"></div>
+              <button class="btn btn-primary" id="btnAdd">
+                <span class="btn-plus">＋</span>新增身份
+              </button>
+            </div>
+          </section>
+
+          <section class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th class="col-name">姓名</th>
+                  <th style="width:5%;">性别</th>
+                  <th style="width:17%;">身份证号</th>
+                  <th style="width:10%;">出生日期</th>
+                  <th style="width:17%;">户籍地区</th>
+                  <th style="width:12%;">手机号</th>
+                  <th style="width:9%;">关系</th>
+                  <th style="width:9%;">是否有记录</th>
+                  <th class="col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="tbody"></tbody>
+            </table>
+            <div class="empty" id="emptyState" hidden>
+              <span class="empty-icon">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 5h18M5 5v14a2 2 0 0 0 2 2h7M5 5h2V3h4v2h2"/><path d="M15 17l2 2 4-4"/></svg>
+              </span>
+              <p class="empty-title">没有找到记录</p>
+              <p class="empty-sub" id="emptySub">换个关键词试试，或新增一条档案。</p>
+            </div>
+          </section>
+
+          <footer class="list-foot">
+            <span id="countText">共 0 条</span>
+            <nav class="pager" id="pager" aria-label="分页"></nav>
+            <div class="page-size">
+              <label for="pageSize">每页</label>
+              <select id="pageSize">
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+              <span>条</span>
+            </div>
+          </footer>
+        </section>
+
+        <!-- ===== 视图：数据看板 ===== -->
+        <section class="view" id="viewDash" data-view="dashboard" hidden>
+          <div class="dash-head">
+            <div class="dash-tabs" role="tablist">
+              <button class="dash-tab active" data-tab="person" role="tab">人员信息</button>
+              <button class="dash-tab" data-tab="mobile" role="tab">手机信息</button>
+              <button class="dash-tab" data-tab="region" role="tab">地区分布</button>
+            </div>
+
+            <div class="dash-filters">
+              <label>是否记录
+                <select id="dashHasRecord">
+                  <option value="all">全部</option>
+                  <option value="yes">是</option>
+                  <option value="no">否</option>
+                </select>
+              </label>
+              <label>记录年份
+                <select id="dashRegYear" disabled>
+                  <option value="">全部年份</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="dash-pane" id="panePerson">
+            <div class="dash-cards" id="countsPerson"></div>
+            <div class="dash-grid">
+              <div class="dash-card"><h4>性别占比</h4><div class="chart" id="chartGender"></div></div>
+              <div class="dash-card"><h4>关系占比</h4><div class="chart" id="chartRelation"></div></div>
+              <div class="dash-card"><h4>姓氏分析</h4><div class="chart" id="chartSurname"></div></div>
+              <div class="dash-pair dash-card-wide">
+                <div class="dash-card"><h4>出生年份</h4><div class="chart" id="chartBirthYear"></div></div>
+                <div class="dash-card"><h4>年龄</h4><div class="chart" id="chartAge"></div></div>
+                <div class="dash-card"><h4>出生月份</h4><div class="chart" id="chartBirthMonth"></div></div>
+                <div class="dash-card"><h4>星座</h4><div class="chart" id="chartConstellation"></div></div>
+              </div>
+              <div class="dash-card dash-card-wide"><h4>年龄阶段</h4><div class="chart" id="chartAgeStage"></div></div>
+            </div>
+          </div>
+
+          <div class="dash-pane" id="paneMobile" hidden>
+            <div class="dash-cards" id="countsMobile"></div>
+            <div class="dash-pair">
+              <div class="dash-card"><h4>手机归属地</h4><div class="chart" id="chartMobileProvince"></div></div>
+              <div class="dash-card"><h4>手机运营商</h4><div class="chart" id="chartCarrier"></div></div>
+            </div>
+          </div>
+
+          <div class="dash-pane" id="paneRegion" hidden>
+            <div class="dash-card dash-card-wide"><h4>地区分布</h4>
+              <div class="region-body">
+                <div class="region-map-col">
+                  <div class="region-toolbar" id="regionToolbar"></div>
+                  <div class="map-chart" id="chartRegion"></div>
+                </div>
+                <div class="region-rank-col">
+                  <div class="region-rank-title" id="regionRankTitle">全国各省人数排名</div>
+                  <div class="chart" id="chartRegionRank"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 视图：系统管理 → 用户管理 ===== -->
+        <section class="view" id="viewSysUsers" data-view="users" hidden>
+          <section class="sys-bar">
+            <div class="sys-bar-left">
+              <h3 class="sys-title">用户管理</h3>
+              <span class="sys-sub" id="sysUserCount"></span>
+            </div>
+            <div class="sys-bar-right">
+              <div class="search search-sm">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+                <input id="sysUserSearch" type="search" placeholder="搜索用户名 / 昵称…" autocomplete="off" />
+              </div>
+              <button class="btn btn-primary" id="btnAddUser"><span class="btn-plus">＋</span>新增用户</button>
+            </div>
+          </section>
+          <section class="table-wrap sys-table">
+            <table class="data-table sys-data-table">
+              <thead>
+                <tr>
+                  <th style="width:160px;">用户名</th>
+                  <th style="width:140px;">昵称</th>
+                  <th style="width:120px;">状态</th>
+                  <th>角色</th>
+                  <th class="col-actions" style="width:180px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="sysUserBody"></tbody>
+            </table>
+            <div class="empty" id="sysUserEmpty" hidden>
+              <p class="empty-title">暂无可显示的用户</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===== 视图：系统管理 → 角色管理 ===== -->
+        <section class="view" id="viewSysRoles" data-view="roles" hidden>
+          <section class="sys-bar">
+            <div class="sys-bar-left">
+              <h3 class="sys-title">角色管理</h3>
+              <span class="sys-sub" id="sysRoleCount"></span>
+            </div>
+            <div class="sys-bar-right">
+              <button class="btn btn-primary" id="btnAddRole"><span class="btn-plus">＋</span>新增角色</button>
+            </div>
+          </section>
+          <section class="table-wrap sys-table">
+            <table class="data-table sys-data-table">
+              <thead>
+                <tr>
+                  <th style="width:150px;">角色名称</th>
+                  <th style="width:120px;">角色标识</th>
+                  <th style="width:90px;">状态</th>
+                  <th style="width:80px;">用户数</th>
+                  <th>权限</th>
+                  <th class="col-actions" style="width:170px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="sysRoleBody"></tbody>
+            </table>
+            <div class="empty" id="sysRoleEmpty" hidden>
+              <p class="empty-title">暂无可显示的角色</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ===== 无任何可用权限 ===== -->
+        <section class="view" id="viewNoPerm" hidden>
+          <div class="noperm">
+            <div class="noperm-ic">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1.4"/></svg>
+            </div>
+            <h3 class="noperm-title">当前账号暂无可用页面权限</h3>
+            <p class="noperm-sub">请联系管理员为你的角色分配页面访问权限。</p>
+            <button class="btn btn-ghost" id="btnNoPermLogout">退出登录</button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- 表单抽屉：新增/编辑 -->
+  <div class="overlay" id="drawerOverlay" hidden></div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+    <div class="drawer-head">
+      <h2 id="drawerTitle">新增身份档案</h2>
+      <button class="icon-btn" id="btnDrawerClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <form id="idForm" novalidate>
+      <div class="field">
+        <label for="fName">姓名 <em>*</em></label>
+        <input id="fName" type="text" maxlength="20" placeholder="请输入真实姓名" autocomplete="off" />
+        <p class="field-err" data-for="fName"></p>
+      </div>
+
+      <div class="field">
+        <label for="fCardNo">身份证号 <em>*</em></label>
+        <input id="fCardNo" type="text" maxlength="18" placeholder="15 或 18 位" autocomplete="off" spellcheck="false" />
+        <p class="field-err" data-for="fCardNo"></p>
+      </div>
+
+      <div class="derive" id="derivePanel" hidden>
+        <div class="derive-item"><span>户籍</span><b id="dRegion">—</b></div>
+        <div class="derive-item"><span>出生</span><b id="dBirth">—</b></div>
+        <div class="derive-item"><span>性别</span><b id="dGender">—</b></div>
+      </div>
+
+      <div class="field">
+        <label for="fMobile">手机号</label>
+        <input id="fMobile" type="tel" maxlength="11" placeholder="选填，11 位" autocomplete="off" />
+        <p class="field-err" data-for="fMobile"></p>
+      </div>
+
+      <div class="field">
+        <label>关系 <button type="button" class="link-btn" id="btnAddRelation">＋ 自定义</button></label>
+        <div class="relation-select" id="relationRadios"></div>
+      </div>
+
+      <div class="field">
+        <label for="fRemark">备注</label>
+        <textarea id="fRemark" rows="3" maxlength="500" placeholder="选填，补充说明（最多 500 字）" autocomplete="off"></textarea>
+        <p class="field-err" data-for="fRemark"></p>
+      </div>
+
+      <div class="drawer-foot">
+        <button type="button" class="btn btn-ghost" id="btnCancel">取消</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmit">保存档案</button>
+      </div>
+    </form>
+  </aside>
+
+  <!-- 自定义关系输入弹层 -->
+  <div class="overlay" id="relOverlay" hidden></div>
+  <div class="dialog sm" id="relDialog" role="dialog" aria-modal="true" hidden>
+    <div class="dialog-head">
+      <h3>新增自定义关系</h3>
+      <button class="icon-btn" id="btnRelClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="dialog-sub">自定义关系仅保存在本机浏览器，最多保留 6 个常用关系。</p>
+    <div class="field" style="margin-top: 12px;">
+      <label for="fCustomRelLabel">关系名称 <em>*</em></label>
+      <input id="fCustomRelLabel" type="text" maxlength="10" placeholder="如：房东、客户…" autocomplete="off" />
+      <p class="field-err" id="customRelErr"></p>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="btnRelCancel">取消</button>
+      <button class="btn btn-primary" id="btnRelConfirm">添加</button>
+    </div>
+  </div>
+
+  <!-- 人员详情 -->
+  <div class="overlay" id="detailOverlay" hidden></div>
+  <div class="dialog detail" id="detailDialog" role="dialog" aria-modal="true" hidden>
+    <div class="dialog-head">
+      <div class="dialog-head-inner">
+        <span class="kicker">Profile</span>
+        <h3>人员详情</h3>
+      </div>
+      <button class="icon-btn" id="btnDetailClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="detail-body" id="detailBody">
+      <div class="detail-loading">加载中…</div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="btnDetailCancel">关闭</button>
+    </div>
+  </div>
+
+  <!-- 地区人数明细 -->
+  <div class="overlay" id="peopleOverlay" hidden></div>
+  <div class="dialog dash-people" id="peopleDialog" role="dialog" aria-modal="true" hidden>
+    <div class="dialog-head">
+      <div class="dialog-head-inner">
+        <span class="kicker" id="peopleKicker">Region</span>
+        <h3 id="peopleTitle">地区人员</h3>
+      </div>
+      <button class="icon-btn" id="btnPeopleClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="people-body" id="peopleBody"></div>
+    <div class="people-foot">
+      <span id="peopleCount">共 0 条</span>
+      <nav class="pager" id="peoplePager" aria-label="明细分分"></nav>
+    </div>
+  </div>
+
+  <!-- 删除确认 -->
+  <div class="overlay" id="delOverlay" hidden></div>
+  <div class="dialog" id="delDialog" role="alertdialog" aria-modal="true" hidden>
+    <div class="dialog-icon">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+    </div>
+    <h3 id="delTitle">确认删除该档案？</h3>
+    <p id="delSub">此操作不可撤销。</p>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="btnDelCancel">取消</button>
+      <button class="btn btn-danger" id="btnDelConfirm">删除</button>
+    </div>
+  </div>
+
+  <!-- 修改密码 -->
+  <div class="overlay" id="pwdOverlay" hidden></div>
+  <div class="dialog sm" id="pwdDialog" role="dialog" aria-modal="true" aria-labelledby="pwdTitle" hidden>
+    <div class="dialog-head">
+      <div class="dialog-head-inner">
+        <span class="kicker">Security</span>
+        <h3 id="pwdTitle">修改密码</h3>
+      </div>
+      <button class="icon-btn" id="btnPwdClose" aria-label="关闭">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="pwd-body">
+      <div class="field">
+        <label for="pOld">原密码 <em>*</em></label>
+        <input id="pOld" type="password" autocomplete="current-password" placeholder="请输入当前密码" />
+      </div>
+      <div class="field">
+        <label for="pNew">新密码 <em>*</em></label>
+        <input id="pNew" type="password" autocomplete="new-password" placeholder="6-32 位，请妥善保管" />
+      </div>
+      <div class="field">
+        <label for="pNew2">确认新密码 <em>*</em></label>
+        <input id="pNew2" type="password" autocomplete="new-password" placeholder="再次输入新密码" />
+      </div>
+      <p class="field-err" id="pwdErr" role="alert"></p>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="btnPwdCancel">取消</button>
+      <button class="btn btn-primary" id="btnPwdConfirm">确认修改</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="./auth.js"></script>
+  <script src="./app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <script src="./dashboard.js"></script>
+  <script src="./sys.js"></script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "nickname": "管理员",
+      "salt": "7ac4acd32f518497dbab656d7ecdefd5",
+      "hash": "4d7e09a8a9ced9d18982041f9b56690ae5a8be89cbd16a0a29eb2c7e2db2139b",
+      "status": "1"
+    },
+    {
+      "id": 2,
+      "username": "jfj",
+      "nickname": "军",
+      "salt": "a331461714c516b787112449c8f8cbde",
+      "hash": "1532fe3ceb1d4afbb6289981f7906ac062cc80e1023b736083fe3d77f3b03ca0",
+      "status": "1"
+    }
+  ],
+  "roles": [
+    {
+      "id": 1,
+      "roleKey": "admin",
+      "roleName": "超级管理员",
+      "status": "1",
+      "isAdmin": true,
+      "perms": [
+        "*"
+      ],
+      "remark": "内置超级管理员角色，拥有全部权限"
+    },
+    {
+      "id": 2,
+      "roleKey": "dataAnalysis",
+      "roleName": "数据分析专员",
+      "status": "1",
+      "isAdmin": false,
+      "perms": [
+        "dashboard:view"
+      ],
+      "remark": ""
+    }
+  ],
+  "userRoles": [
+    {
+      "userId": 1,
+      "roleId": 1
+    },
+    {
+      "userId": 2,
+      "roleId": 2
+    }
+  ]
+}

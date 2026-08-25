@@ -1,0 +1,17 @@
+{
+  "name": "infocard-id-card-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "fj_id_card 个人身份信息管理前端 + Express 后端",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "mysql2": "^3.11.0"
+  }
+}

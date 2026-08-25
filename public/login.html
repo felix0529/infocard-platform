@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>登录 · 身份信息管理</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234353f7'/%3E%3Cpath d='M9 23V9h5.2c3.4 0 5.8 2.3 5.8 6.1S17.6 23 14.2 23H9zm4.8-8.3v4.2h.5c1.4 0 2.3-.9 2.3-2.1s-.9-2.1-2.3-2.1h-.5z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    /* 登录页独立极简布局（不污染主应用样式） */
+    .login-wrap {
+      min-height: 100vh; display: grid; place-items: center; position: relative;
+      overflow: hidden; padding: 24px;
+      background:
+        radial-gradient(900px 520px at 78% -8%, rgba(67,83,247,.10), transparent 62%),
+        radial-gradient(720px 460px at -10% 108%, rgba(107,91,247,.12), transparent 60%),
+        var(--bg);
+    }
+    .login-card {
+      width: 100%; max-width: 380px; position: relative; z-index: 1;
+      background: rgba(255,255,255,.86);
+      border: 1px solid var(--line);
+      border-radius: 20px; box-shadow: var(--shadow);
+      padding: 40px 36px 32px;
+      backdrop-filter: saturate(160%) blur(10px);
+    }
+    .login-mark {
+      width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+      color: #fff; background: linear-gradient(135deg, #4353f7, #6b5bf7);
+      box-shadow: 0 10px 24px rgba(67,83,247,.32);
+      margin-bottom: 22px;
+    }
+    .login-title { font-size: 22px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+    .login-sub { margin: 6px 0 26px; color: var(--ink-3); font-size: 13px; }
+    .login-field { margin-bottom: 16px; }
+    .login-field label { display: block; font-size: 12.5px; color: var(--ink-2); margin-bottom: 7px; font-weight: 500; }
+    .login-field input {
+      width: 100%; height: 44px; padding: 0 14px;
+      border: 1px solid var(--line-2); border-radius: 11px;
+      font-size: 14px; color: var(--ink); background: #fff; outline: none;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    .login-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .login-err { min-height: 18px; margin: -6px 0 12px; font-size: 12.5px; color: var(--danger); }
+    .login-btn {
+      width: 100%; height: 44px; border: none; border-radius: 11px; cursor: pointer;
+      font-size: 15px; font-weight: 600; color: #fff;
+      background: linear-gradient(135deg, #4353f7, #5a48ee);
+      box-shadow: 0 8px 20px rgba(67,83,247,.30);
+      transition: transform .12s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+    .login-btn:hover { box-shadow: 0 10px 24px rgba(67,83,247,.38); transform: translateY(-1px); }
+    .login-btn:active { transform: translateY(0); }
+    .login-btn:disabled { opacity: .6; cursor: default; transform: none; }
+    .login-foot { text-align: center; margin-top: 22px; color: var(--ink-3); font-size: 12px; }
+    .login-hint { color: var(--ink-3); font-size: 12px; text-align: center; margin-top: 14px; }
+  </style>
+</head>
+<body class="login-body">
+  <div class="login-wrap">
+    <form class="login-card" id="loginForm" novalidate>
+      <div class="login-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <rect x="3" y="5" width="18" height="14" rx="2.5"/>
+          <circle cx="9" cy="11" r="2"/>
+          <path d="M6.5 15.5c.7-1.4 1.6-2 2.5-2s1.8.6 2.5 2"/>
+        </svg>
+      </div>
+      <h1 class="login-title">欢迎回来</h1>
+      <p class="login-sub">登录身份信息管理平台</p>
+
+      <div class="login-field">
+        <label for="username">用户名</label>
+        <input id="username" name="username" type="text" autocomplete="username"
+               placeholder="请输入用户名" autofocus />
+      </div>
+      <div class="login-field">
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password"
+               placeholder="请输入密码" />
+      </div>
+      <p class="login-err" id="loginErr" role="alert"></p>
+      <button class="login-btn" type="submit" id="loginBtn">登 录</button>
+
+      <p class="login-hint">默认账号：admin / admin123</p>
+    </form>
+  </div>
+
+  <script>
+    (function () {
+      // 已登录则直接进入主应用
+      if (localStorage.getItem('fj_token')) location.replace('./index.html');
+      const form = document.getElementById('loginForm');
+      const errEl = document.getElementById('loginErr');
+      const btn = document.getElementById('loginBtn');
+
+      function showErr(m) { errEl.textContent = m || ''; }
+      async function onSubmit(e) {
+        e.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        if (!username) { showErr('请输入用户名'); return; }
+        if (!password) { showErr('请输入密码'); return; }
+        showErr('');
+        btn.disabled = true; btn.textContent = '登录中…';
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok || !j.ok) throw new Error(j.message || '登录失败，请重试');
+          localStorage.setItem('fj_token', j.data.token);
+          location.replace('./index.html');
+        } catch (err) {
+          showErr(err.message);
+          btn.disabled = false; btn.textContent = '登 录';
+        }
+      }
+      form.addEventListener('submit', onSubmit);
+    })();
+  </script>
+</body>
+</html>
