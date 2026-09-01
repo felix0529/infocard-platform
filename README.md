@@ -45,9 +45,9 @@ infocard-id-card-manager/
 ├── scripts/
 │   ├── start-services.sh        # 一键启动/停止/重启 测试(5173) 与 生产(5174) 服务
 │   ├── sync-comments.js         # 从测试库同步表/字段注释到生产库
-│   ├── rebuild-stats.js         # 重建看板预聚合统计表 fj_id_card_stats
 │   ├── decrement-stats.js       # 按需扣减看板预聚合统计（数据修正用）
-│   └── fetch-district-maps.js   # 预下载有数据城市的区级地图（DataV areas_v3）
+│   ├── fetch-district-maps.js   # 预下载有数据城市的区级地图（DataV areas_v3）
+│   └── sql/                     # 数据库脚本：表结构迁移、统计表重建存储过程
 ├── .env                         # 数据库连接配置（测试库，不纳入版本控制）
 ├── .env.prod                    # 生产库配置（叠加于 .env，不纳入版本控制）
 ├── package.json
@@ -147,7 +147,7 @@ PORT=5174 PROFILE=prod node server/index.js
 - `scripts/start-services.sh {start|stop|restart|status|start:test|start:prod|stop:test|stop:prod}`：一键管理测试(5173)与生产(5174)两个服务，后台守护运行。日志落盘 `logs/server-<port>.log`，PID 记录于 `logs/server-<port>.pid`。用法见「同时运行测试库与生产库（多端口）」。
 - `node scripts/sync-comments.js [--dry-run] [--table=xxx]`：从测试库(`infocard_test`)读取表/列注释，同步到生产库(`infocard`)，只改元数据注释、不改动列定义/索引/数据。`--dry-run` 仅生成并预览待执行语句而不执行；`--table=xxx` 只看单表。
 - `node scripts/fetch-district-maps.js`：扫描有数据的城市，从 DataV 预下载其区级地图到 `public/maps/district/`，文件名即城市 6 位 adcode（如 `440100.json`）。脚本默认请求本机 `http://127.0.0.1:5173/api/dashboard/region` 获取城市列表，请确保对应实例已启动。
-- `node scripts/rebuild-stats.js [--prod]`：全表扫描 `fj_id_card` 并关联 `cdsgus` 登记年份，重建看板预聚合统计表 `fj_id_card_stats`，将看板落地页的多个全表 GROUP BY 聚合转为「一次扫描 + 预写统计」，避免千万级大表实时聚合导致的 `ER_RECORD_FILE_FULL` 与超时。可用 `STATS_CHUNK` 环境变量调整每块扫描行数（默认 200000）。
+- 看板统计表全量重建已迁移到数据库层：先执行 `scripts/sql/002_sp_rebuild_stats.sql` 创建存储过程 `sp_rebuild_id_card_stats()`，再 `CALL sp_rebuild_id_card_stats()` 清空并全量重建 `fj_id_card_stats`（单次派生扫描 + 预写统计），避免千万级大表实时聚合导致的 `ER_RECORD_FILE_FULL` 与超时。生产库执行同样步骤（先备份）。
 
 ## 注意事项
 
@@ -166,7 +166,7 @@ PORT=5174 PROFILE=prod node server/index.js
 - `cdsgus` —— 历史登记信息表（关联登记查询 / 看板「是否有记录」）
 - `fj_constellation` —— 星座区间表（看板星座维度）
 - `fj_mobile_segment` —— 手机号号段归属地表（看板手机归属地/运营商维度）
-- `fj_id_card_stats` —— 看板预聚合统计表（由 `scripts/rebuild-stats.js` 维护）
+- `fj_id_card_stats` —— 看板预聚合统计表（由存储过程 `sp_rebuild_id_card_stats` 全量重建，增量维护由应用层 `statsAdjust` 完成）
 - `fj_admin_region` —— 行政区划映射表
 - `v_fj_id_card_info` —— 派生信息视图
 

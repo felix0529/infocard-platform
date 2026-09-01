@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
 
-// ---------- env 加载（与 rebuild-stats.js 一致）----------
+// ---------- env 加载（与 server/db.js 一致的 .env 加载）----------
 const realKeys = new Set(Object.keys(process.env));
 const isProd = process.env.PROFILE ? String(process.env.PROFILE).toLowerCase() === 'prod' : process.argv.includes('--prod');
 const dryRun = process.argv.includes('--dry');
@@ -150,7 +150,7 @@ const RECORDS = [
   ['吴双', '999992198504041211', '15923257868'],
 ];
 
-// ---------- 行级派生（与 db.js / rebuild-stats.js 完全一致）----------
+// ---------- 行级派生（与 db.js 增量维护口径完全一致）----------
 function ageOf(ymd, now) {
   const m = /^(\d{4})(\d{2})(\d{2})$/.exec(String(ymd || ''));
   if (!m) return null;

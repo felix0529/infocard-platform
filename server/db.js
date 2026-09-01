@@ -236,7 +236,7 @@ async function syncTableComments() {
     "ALTER TABLE fj_constellation COMMENT='星座字典表:存储12星座的名称与日期范围(MMDD格式)'",
 
     // ---- fj_id_card_stats ----
-    "ALTER TABLE fj_id_card_stats COMMENT='看板预聚合统计表:按维度(dim)+取值(bucket)分块存储计数,由 rebuild-stats 脚本维护'",
+    "ALTER TABLE fj_id_card_stats COMMENT='看板预聚合统计表:按维度(dim)+取值(bucket)分块存储计数,由存储过程 sp_rebuild_id_card_stats 全量重建'",
 
     // ---- fj_mobile_segment ----
     "ALTER TABLE fj_mobile_segment COMMENT='手机号段字典表:前7位号段对应的归属地/运营商信息'"
@@ -624,13 +624,13 @@ function dashboardFilterClause(filters = {}) {
 }
 
 // ---------- 看板预聚合统计表 ----------
-// fj_id_card_stats(dim, bucket, cnt) 由 scripts/rebuild-stats.js 维护。
+// fj_id_card_stats(dim, bucket, cnt) 由存储过程 sp_rebuild_id_card_stats（scripts/sql/002_sp_rebuild_stats.sql）全量重建。
 // 看板接口优先读统计表，缺失（未重建）时回退到实时聚合。
-const NULL_KEY = '__null__';   // 与重建脚本 NULL_SENT 保持一致：统计表中 NULL 值的 bucket 表示
+const NULL_KEY = '__null__';   // 与重建存储过程的口径保持一致：统计表中 NULL 值的 bucket 表示
 
 // ---------- 实时增量维护 fj_id_card_stats ----------
 // 新增/修改/删除人员时，对本人的各维度统计键做 ±1 同步，避免每次都全量重建统计表。
-// 行级口径与 scripts/rebuild-stats.js 保持一一对应。
+// 行级口径与重建存储过程 sp_rebuild_id_card_stats 保持一一对应。
 const ROW_COLS = 'id, name, card_no, mobile, relation, remark, region_code, birth_date_str, birth_mmdd, gender_code, created_at';
 
 // 年龄（TIMESTAMPDIFF(YEAR, STR_TO_DATE(ymd,'%Y%m%d'), CURDATE()) 的 JS 等价实现）
