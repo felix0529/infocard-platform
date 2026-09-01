@@ -72,7 +72,7 @@ npm install
 #    DB_HOST=127.0.0.1
 #    DB_PORT=3306
 #    DB_USER=trae
-#    DB_PASSWORD=myTrae_2026
+#    DB_PASSWORD=<你的数据库密码>
 #    DB_NAME=infocard_test
 #    ENV_LABEL=测试库
 

@@ -43,9 +43,13 @@ const DB = {
   host: process.env.DB_HOST || '127.0.0.1',
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || 'trae',
-  password: process.env.DB_PASSWORD || 'myTrae_2026',
+  password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || (isProd ? 'infocard' : 'infocard_test')
 };
+if (!DB.password) {
+  console.error('[rebuild-stats] 未配置数据库密码：请在项目根目录 .env' + (isProd ? ' / .env.prod' : '') + ' 中设置 DB_PASSWORD');
+  process.exit(1);
+}
 
 const CHUNK = Math.max(1000, Number(process.env.STATS_CHUNK || 200000));
 // cdsgus 批量 IN 查询的卡号批次：CtfId 索引 key_len=1023B，IN 列表过大（超出 range_optimizer_max_mem_size=8MB）

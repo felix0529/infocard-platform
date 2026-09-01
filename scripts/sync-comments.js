@@ -2,9 +2,32 @@
 // 用法：node sync-comments.js --dry-run   # 仅生成语句不执行
 //       node sync-comments.js             # 生成并执行
 //       node sync-comments.js --table=cdsgus --dry-run  # 只看单表
+const fs = require('fs');
+const path = require('path');
 const mysql = require('mysql2/promise');
 
-const CFG = { host: '127.0.0.1', port: 3306, user: 'trae', password: 'myTrae_2026' };
+// ---------- env 加载（与 server/db.js 一致），免硬编码凭据 ----------
+const realKeys = new Set(Object.keys(process.env));
+for (const name of ['.env', '.env.prod']) {
+  const envPath = path.join(__dirname, '..', name);
+  try {
+    const txt = fs.readFileSync(envPath, 'utf-8');
+    for (const line of txt.split('\n')) {
+      const m = line.match(/^\s*(DB_\w+|ENV_LABEL)\s*=\s*(.*)\s*$/);
+      if (m && !realKeys.has(m[1])) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+    }
+  } catch {}
+}
+if (!process.env.DB_PASSWORD) {
+  console.error('[sync-comments] 未配置数据库密码：请在项目根目录 .env 中设置 DB_PASSWORD');
+  process.exit(1);
+}
+const CFG = {
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER || 'trae',
+  password: process.env.DB_PASSWORD
+};
 const PROD = 'infocard';
 const TEST = 'infocard_test';
 const dryRun = process.argv.includes('--dry-run');

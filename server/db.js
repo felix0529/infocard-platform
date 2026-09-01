@@ -36,7 +36,7 @@ const DB = {
   host: process.env.DB_HOST || '127.0.0.1',
   port: Number(process.env.DB_PORT || 3306),
   user: process.env.DB_USER || 'trae',
-  password: process.env.DB_PASSWORD || 'myTrae_2026',
+  password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || (IS_PROD ? 'infocard' : 'infocard_test')
 };
 const ENV_LABEL = process.env.ENV_LABEL || (IS_PROD ? '生产库' : '测试库');
