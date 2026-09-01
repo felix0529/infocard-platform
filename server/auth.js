@@ -190,23 +190,12 @@ function findUser(by, value) {
   return state.users.find(u => (key === 'id' ? Number(u.id) === Number(value) : u.username === value));
 }
 
-function getUserRolesObj(userId) {
-  const roleIds = state.userRoles.filter(x => x.userId === userId).map(x => x.roleId);
-  return { roleIds };
-}
-
-// 只要该用户仍属于任意"启用"角色，返回 true（用于限制禁用最后一个管理员）
-function hasEnabledRoles(userId) {
-  const roleIds = state.userRoles.filter(x => x.userId === userId).map(x => x.roleId);
-  return state.roles.some(r => roleIds.includes(r.id) && r.status === '1');
-}
-
 module.exports = {
   PERMISSIONS, ALL_PERM,
   createToken, publicUser, hashPwd, verifyPwd, setPassword, permsForUser,
   requireAuth, requirePerm,
   persist, nextId,
   isAdminRole, listRoles, listUsers, setUserRoles,
-  findRole, findUser, getUserRolesObj, hasEnabledRoles,
+  findRole, findUser,
   currentUsers: () => state.users, currentRoles: () => state.roles
 };

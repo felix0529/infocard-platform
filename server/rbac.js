@@ -6,6 +6,7 @@
  */
 const express = require('express');
 const auth = require('./auth');
+const { getEnvInfo } = require('./db');
 
 // ---------- 认证路由 ----------
 const authRouter = express.Router();
@@ -20,12 +21,12 @@ authRouter.post('/login', (req, res) => {
   if (user.status !== '1') return res.status(400).json({ ok: false, message: '账号已被禁用，请联系管理员' });
   const token = auth.createToken(user.id);
   const { perms } = auth.permsForUser(user.id);
-  res.json({ ok: true, data: { token, user: auth.publicUser(user), perms } });
+  res.json({ ok: true, env: getEnvInfo(), data: { token, user: auth.publicUser(user), perms } });
 });
 
 // 当前登录用户信息（需登录）
 authRouter.get('/me', auth.requireAuth, (req, res) => {
-  res.json({ ok: true, data: req.auth });
+  res.json({ ok: true, env: getEnvInfo(), data: req.auth });
 });
 
 // 登出（需登录）

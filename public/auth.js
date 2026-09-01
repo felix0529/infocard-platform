@@ -52,7 +52,8 @@
     user: null,
     isAdmin: false,
     roles: [],
-    perms: []
+    perms: [],
+    env: null
   };
 
   const auth = {
@@ -67,11 +68,13 @@
         const res = await fetch('/api/auth/me', { cache: 'no-store' });
         if (res.status === 401) return false;
         if (!res.ok) { location.replace(LOGIN_URL); return false; }
-        const d = (await res.json()).data;
+        const j = await res.json();
+        const d = j.data;
         state.user = d.user;
         state.roles = d.roles || [];
         state.perms = d.perms || [];
         state.isAdmin = !!d.isAdmin || state.perms.includes('*');
+        state.env = j.env || null;
         state.ready = true;
         return true;
       } catch (e) {
@@ -122,7 +125,20 @@
   }
 
   // ---------- 页面引导（权限门控 + 导航装配） ----------
+  function renderEnvBadge() {
+    const badge = document.getElementById('envBadge');
+    const text = document.getElementById('envBadgeText');
+    if (!badge) return;
+    const env = state.env;
+    if (!env || !env.name) { badge.hidden = true; return; }
+    badge.hidden = false;
+    badge.setAttribute('data-env', env.profile === 'prod' ? 'prod' : 'test');
+    badge.title = '当前环境：' + env.name + '（数据库 ' + env.database + '）';
+    if (text) text.textContent = env.name;
+  }
+
   function bootApp() {
+    renderEnvBadge();
     renderUserBadges();
     setupSidebar();
 
@@ -140,9 +156,11 @@
       g.style.display = visible ? '' : 'none';
     });
 
-    // 2) 业务维护入口（新增身份按钮）
+    // 2) 业务维护入口（新增身份 / 导入身份按钮）
     const addBtn = document.getElementById('btnAdd');
     if (addBtn) addBtn.style.display = auth.canEditList() ? '' : 'none';
+    const importBtn = document.getElementById('btnImport');
+    if (importBtn) importBtn.style.display = auth.canEditList() ? '' : 'none';
 
     // 3) 无任何可用页面
     if (keys.length === 0) {
@@ -193,17 +211,6 @@
       localStorage.setItem('fj_sidebar_collapsed', isCollapsed ? '1' : '0');
     }
     toggles.forEach(btn => btn && btn.addEventListener('click', toggle));
-  }
-
-  // ---------- 轻量 Toast（auth.js 独立提供，避免依赖 app.js） ----------
-  let toastTimer = null;
-  function toast(msg, type) {
-    const el = document.getElementById('toast');
-    if (!el) return;
-    el.textContent = msg;
-    el.className = 'toast ' + (type || 'success') + ' show';
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
   }
 
   // ---------- 用户信息：右上角用户菜单 ----------

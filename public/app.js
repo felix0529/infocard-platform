@@ -22,6 +22,11 @@ const API = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   }).then(r => r.json()),
+  importCards: (items) => fetch('/api/id-cards/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items })
+  }).then(r => r.json()),
   update: (id, payload) => fetch(`/api/id-cards/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -29,40 +34,51 @@ const API = {
   }).then(r => r.json()),
   remove: (id) => fetch(`/api/id-cards/${id}`, { method: 'DELETE' }).then(r => r.json()),
   detail: (id) => fetch(`/api/id-cards/${id}/detail`).then(r => r.json()),
-  stats: () => fetch('/api/id-cards/stats').then(r => r.json())
+  stats: (q) => {
+    const params = q || {};
+    const url = new URL('/api/id-cards/stats', location.origin);
+    Object.entries(params).forEach(([k, v]) => {
+      if (v == null || v === '' || v === false) return;
+      url.searchParams.set(k, String(v));
+    });
+    return fetch(url.toString()).then(r => r.json());
+  },
+  getRelations: () => fetch('/api/relations').then(r => r.json()),
+  createRelation: (label) => fetch('/api/relations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label })
+  }).then(r => r.json()),
+  deleteRelation: (value, reassignTo) => {
+    const qs = reassignTo != null ? ('?reassignTo=' + encodeURIComponent(String(reassignTo))) : '';
+    return fetch('/api/relations/' + encodeURIComponent(String(value)) + qs, { method: 'DELETE' }).then(r => r.json());
+  }
 };
 
-// ---------- 关系（内置 + 自定义，负数编码为自定义） ----------
-const BASE_RELATIONS = [
-  { value: 0, label: '亲属', builtin: true },
-  { value: 1, label: '朋友', builtin: true },
-  { value: 2, label: '同事(瑞联)', builtin: true },
-  { value: 3, label: '同事(优品)', builtin: true },
-  { value: 4, label: '同事(大自然)', builtin: true },
-  { value: 5, label: '同事(财税)', builtin: true },
-  { value: null, label: '其他', builtin: true }
+// ---------- 关系字典（单一数据源：从后端 /api/relations 拉取，全局共享、跨设备同步） ----------
+// 启动后由 loadRelations() 填充 window.FJ_RELATIONS；旧版浏览器本地自定义关系在首次启动时迁移到云端。
+let FJ_RELATIONS = [
+  // 兜底：拉取失败时使用默认内置，保证列表/表单仍可用
+  { value: 0, label: '亲属', is_builtin: true, sort: 0 },
+  { value: 1, label: '朋友', is_builtin: true, sort: 1 },
+  { value: 2, label: '同事(瑞联)', is_builtin: true, sort: 2 },
+  { value: 3, label: '同事(优品)', is_builtin: true, sort: 3 },
+  { value: 4, label: '同事(大自然)', is_builtin: true, sort: 4 },
+  { value: 5, label: '同事(财税)', is_builtin: true, sort: 5 }
 ];
-const CUSTOM_REL_KEY = 'fj_id_card.custom_relations';
+window.FJ_RELATIONS = FJ_RELATIONS;
 const CUSTOM_MAX = 6;
+const CUSTOM_REL_KEY = 'fj_id_card.custom_relations'; // 仅用于一次性迁移，迁移后清除
 
-function getCustomRelations() {
-  try {
-    const raw = localStorage.getItem(CUSTOM_REL_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
-}
-function saveCustomRelations(list) {
-  try { localStorage.setItem(CUSTOM_REL_KEY, JSON.stringify(list.slice(0, CUSTOM_MAX))); } catch {}
-}
-function getAllRelations() { return [...getCustomRelations(), ...BASE_RELATIONS]; }
+function getAllRelations() { return FJ_RELATIONS; }
 function relationLabel(v) {
-  const r = getAllRelations().find(x => (x.value == null && v == null) || (x.value === v));
-  return r ? r.label : (v == null ? '其他' : String(v));
+  if (v == null) return '无关系';
+  const r = FJ_RELATIONS.find(x => x.value === Number(v));
+  return r ? r.label : ('关系' + v);
 }
 function relationIsCustom(v) {
-  return getCustomRelations().some(x => (x.value == null && v == null) || x.value === v);
+  const r = FJ_RELATIONS.find(x => x.value === Number(v));
+  return !!(r && !r.is_builtin);
 }
 const REL_TAG = (v) => {
   if (v == null) return 'tag-null';
@@ -70,7 +86,41 @@ const REL_TAG = (v) => {
   return `tag-${Number(v)}`;
 };
 
+// 从云端拉取关系字典，填充 FJ_RELATIONS 并重建依赖 UI；首次成功时迁移本地旧自定义关系
+async function loadRelations() {
+  try {
+    const res = await API.getRelations();
+    if (!res || !res.ok || !Array.isArray(res.data)) return;
+    FJ_RELATIONS = res.data.map(r => ({ value: r.value, label: r.label, is_builtin: !!r.is_builtin, sort: r.sort }));
+    window.FJ_RELATIONS = FJ_RELATIONS;
+    await migrateLocalRelations();
+    buildRelationRadios();
+    renderFilters();
+    if (window.__refreshDashboardRelations) window.__refreshDashboardRelations();
+  } catch (e) {
+    console.warn('[relations] 拉取失败，使用兜底内置', e);
+  }
+}
+// 一次性迁移：把本机旧自定义关系（localStorage）上传到云端（按名称去重），随后清除本地键
+async function migrateLocalRelations() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_REL_KEY);
+    if (!raw) return;
+    const local = JSON.parse(raw);
+    if (!Array.isArray(local) || !local.length) { localStorage.removeItem(CUSTOM_REL_KEY); return; }
+    const cloudLabels = new Set(FJ_RELATIONS.map(r => r.label));
+    for (const c of local) {
+      const label = c && c.label ? String(c.label).trim() : '';
+      if (label && !cloudLabels.has(label)) await API.createRelation(label).catch(() => {});
+    }
+    localStorage.removeItem(CUSTOM_REL_KEY);
+  } catch {}
+}
+
 // ---------- 分页 & 筛选状态 ----------
+// 关系 chip 与 待补手机号 chip 可同时选中：
+//   relationFilter: null（无关系筛选） | 'r0' | 'r1' | ... | 'rnull'（无关系）
+//   nomobileFilter: 是否勾选「待补手机号」
 const state = {
   page: 1,
   pageSize: 20,
@@ -78,18 +128,16 @@ const state = {
   totalPages: 1,
   rows: [],
   q: '',
-  filter: 'all',
+  relationFilter: null,
+  nomobileFilter: false,
   stats: { total: 0, noMobile: 0, byRelation: {} }
 };
 
 let editingId = null;
 let deleteTargetId = null;
-let searchTimer = null;
 
 const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 const els = {
-  badge: $('#modeBadge'), modeText: $('#modeText'),
   tbody: $('#tbody'), empty: $('#emptyState'), emptySub: $('#emptySub'),
   countText: $('#countText'), search: $('#searchInput'), filters: $('#filters'),
   pager: $('#pager'), pageSizeSel: $('#pageSize'),
@@ -104,8 +152,17 @@ const els = {
   relDialog: $('#relDialog'), relOverlay: $('#relOverlay'),
   fCustomRelLabel: $('#fCustomRelLabel'), customRelErr: $('#customRelErr'),
   btnRelClose: $('#btnRelClose'), btnRelCancel: $('#btnRelCancel'), btnRelConfirm: $('#btnRelConfirm'),
+  relList: $('#relList'),
+  relReassignDialog: $('#relReassignDialog'), relReassignOverlay: $('#relReassignOverlay'),
+  relReassignSub: $('#relReassignSub'), relReassignTarget: $('#relReassignTarget'),
+  btnRelReassignCancel: $('#btnRelReassignCancel'), btnRelReassignConfirm: $('#btnRelReassignConfirm'),
   detailDialog: $('#detailDialog'), detailOverlay: $('#detailOverlay'), btnDetailClose: $('#btnDetailClose'), btnDetailCancel: $('#btnDetailCancel'),
   detailBody: $('#detailBody'),
+  btnImport: $('#btnImport'), importDialog: $('#importDialog'), importOverlay: $('#importOverlay'),
+  btnImportClose: $('#btnImportClose'), btnImportCancel: $('#btnImportCancel'), btnImportSubmit: $('#btnImportSubmit'),
+  importDrop: $('#importDrop'), importFile: $('#importFile'), importFileName: $('#importFileName'),
+  importErr: $('#importErr'), importErr2: $('#importErr2'), importResult: $('#importResult'),
+  btnDownloadTemplate: $('#btnDownloadTemplate'),
   toast: $('#toast'), btnRefresh: $('#btnRefresh'), btnAdd: $('#btnAdd')
 };
 
@@ -213,7 +270,8 @@ function rowHtml(r) {
   function regionCell(row) {
     const parts = [row.reg_province, row.reg_city, row.reg_district].filter(v => v && String(v).trim());
     const full = parts.length ? parts.join('') : row.region_name;
-    return full ? escapeHtml(full) : '—';
+    // 列宽有限会被省略号截断，加 title 支持鼠标悬停查看完整户籍地址
+    return full ? `<span class="region" title="${escapeHtml(full)}">${escapeHtml(full)}</span>` : '—';
   }
 
   return `
@@ -221,13 +279,13 @@ function rowHtml(r) {
       <td>
         <div class="name-cell">
           <span class="avatar ${avatarCls}">${initials(r.name)}</span>
-          <span class="name-main">${escapeHtml(r.name) || '—'}</span>
+          <span class="name-main" title="${escapeHtml(r.name || '')}">${escapeHtml(r.name) || '—'}</span>
         </div>
       </td>
-      <td>${genderTag}</td>
+      <td class="col-gender">${genderTag}</td>
       <td><span class="mono">${maskCard(r.card_no)}</span></td>
       <td><span class="birth">${birth}</span></td>
-      <td><span class="region">${regionCell(r)}</span></td>
+      <td>${regionCell(r)}</td>
       <td>${mobileHtml}</td>
       <td><span class="tag ${REL_TAG(relVal)}" title="${escapeHtml(r.relation_label || '其他')}">${escapeHtml(r.relation_label || '其他')}</span></td>
       <td>${r.hasRecord
@@ -261,7 +319,7 @@ function renderTable() {
   if (!rows.length) {
     els.tbody.innerHTML = '';
     els.empty.hidden = false;
-    const hasFilterOrQuery = state.filter !== 'all' || state.q.trim();
+    const hasFilterOrQuery = state.relationFilter || state.nomobileFilter || state.q.trim();
     els.emptySub.textContent = hasFilterOrQuery
       ? '试试调整筛选或搜索关键词。'
       : '还没有档案，点击右上角「新增身份」。';
@@ -299,12 +357,13 @@ async function load(resetPage = false) {
     pageSize: state.pageSize,
     q: state.q || undefined
   };
-  if (state.filter === 'nomobile') params.nomobile = '1';
-  else if (state.filter.startsWith('r')) params.relation = state.filter.slice(1);
+  // 关系 chip 与 待补手机号 chip 可同时生效：分别传 relation / nomobile
+  if (state.nomobileFilter) params.nomobile = '1';
+  if (state.relationFilter) params.relation = state.relationFilter.slice(1);
   try {
     const [res, statsRes] = await Promise.all([
       API.list(params),
-      API.stats().catch(() => null)
+      API.stats(params).catch(() => null)
     ]);
     if (!res.ok) throw new Error(res.message || '加载失败');
     state.rows = res.data || [];
@@ -324,7 +383,6 @@ async function load(resetPage = false) {
       state.page = state.totalPages;
       return load(false);
     }
-    setMode(res.mode);
     renderTable();
   } catch (e) {
     state.rows = [];
@@ -336,24 +394,15 @@ async function load(resetPage = false) {
   }
 }
 
-function setMode(mode) {
-  els.badge.dataset.mode = mode || 'demo';
-  if (mode === 'mysql') {
-    els.modeText.textContent = '已连接 MySQL · infocard_test.fj_id_card';
-  } else {
-    els.modeText.textContent = '演示数据模式';
-  }
-}
-
 // ---------- 筛选 chips ----------
 function buildFiltersMeta() {
-  // 关系标签（内置 + 自定义）按名称升序排列
-  const relChips = [
-    ...BASE_RELATIONS.map(r => ({ key: 'r' + (r.value == null ? 'null' : String(r.value)), label: r.label })),
-    ...getCustomRelations().map(r => ({ key: 'r' + String(r.value), label: r.label, custom: true }))
-  ].sort((a, b) => String(a.label).localeCompare(String(b.label), 'zh'));
+  // 关系标签（内置 + 自定义）按 fj_id_card_relation.sort 字段升序排列，统一从云端字典 FJ_RELATIONS 取
+  const relChips = getAllRelations()
+    .map(r => ({ key: 'r' + (r.value == null ? 'null' : String(r.value)), label: r.label, custom: !r.is_builtin, sort: r.sort }))
+    .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
   return [
     { key: 'all', label: '全部' },
+    { key: 'rnull', label: '无关系' },
     ...relChips,
     { key: 'nomobile', label: '待补手机号' }
   ];
@@ -361,26 +410,31 @@ function buildFiltersMeta() {
 function renderFilters() {
   const meta = buildFiltersMeta();
   const s = state.stats;
+  // 关系 chip 与 待补手机号 chip 可同时为 active；只有「全部」在两者皆空时 active
+  const hasAnyFilter = !!state.relationFilter || state.nomobileFilter;
   els.filters.innerHTML = meta.map(f => {
-    const active = state.filter === f.key ? 'active' : '';
+    let active = '';
+    if (f.key === 'all') active = hasAnyFilter ? '' : 'active';
+    else if (f.key === 'nomobile') active = state.nomobileFilter ? 'active' : '';
+    else active = state.relationFilter === f.key ? 'active' : '';
+    // 统计数统一千分位格式化
     let count = '';
-    if (f.key === 'all') count = s.total;
-    else if (f.key === 'nomobile') count = s.noMobile;
-    else if (f.key.startsWith('r')) {
-      const relKey = f.key.slice(1);
-      count = s.byRelation[relKey] || 0;
-    }
-    const title = count != null ? `${escapeHtml(f.label)}：${count} 条` : escapeHtml(f.label);
-    return `<button class="chip ${active}" role="tab" data-key="${f.key}" title="${title}">${escapeHtml(f.label)} <span class="chip-count">${count}</span></button>`;
+    if (f.key === 'all') count = s.total != null ? Number(s.total).toLocaleString() : '';
+    else if (f.key === 'nomobile') count = s.noMobile != null ? Number(s.noMobile).toLocaleString() : '';
+    const showCount = count !== '';
+    const title = showCount ? `${escapeHtml(f.label)}：${count} 条` : escapeHtml(f.label);
+    const countHtml = showCount ? `<span class="chip-count">${count}</span>` : '';
+    return `<button class="chip ${active}" role="tab" data-key="${f.key}" title="${title}">${escapeHtml(f.label)} ${countHtml}</button>`;
   }).join('');
 }
 
 // ---------- 表单：重置/打开 ----------
 function buildRelationRadios() {
-  const items = getAllRelations();
+  // 表单单选额外提供「无关系」默认项（不进字典表）；其余从云端字典动态生成
+  const items = [{ value: null, label: '无关系', is_builtin: true }, ...getAllRelations()];
   els.relationRadios.innerHTML = items.map(r => {
     const val = r.value == null ? 'null' : String(r.value);
-    const extra = !r.builtin ? ' custom' : '';
+    const extra = (!r.is_builtin && r.value != null) ? ' custom' : '';
     return `<label class="rel-opt${extra}" title="${escapeHtml(r.label)}"><input type="radio" name="relation" value="${val}">${escapeHtml(r.label)}</label>`;
   }).join('');
 }
@@ -480,12 +534,20 @@ function fieldVal(obj, key) {
   if (v == null || v === '') return '—';
   return escapeHtml(String(v));
 }
+// 户籍地区字段：单行完整显示不省略，值超宽时字段内横向滚动查看全部（title 悬停亦可看完整值）
+const PERSON_FIELD_CLS = { full_region: 'nowrap' };
 function renderDetail({ person, cdsgus }) {
   const genderCls = person.gender_code == null ? 'none' : (person.gender_code === 1 ? 'male' : 'female');
   const cards = (cdsgus && cdsgus.length) ? cdsgus : [];
-  const pFields = PERSON_FIELDS.map(([k, label]) =>
-    `<div class="kv"><span class="k">${label}</span><span class="v">${fieldVal(person, k)}</span></div>`
-  ).join('');
+  const pFields = PERSON_FIELDS.map(([k, label]) => {
+    const raw = person && person[k] != null && person[k] !== '' ? String(person[k]) : '';
+    const valHtml = raw ? escapeHtml(raw) : '—';
+    const cls = PERSON_FIELD_CLS[k] ? ` ${PERSON_FIELD_CLS[k]}` : '';
+    const title = (PERSON_FIELD_CLS[k] === 'nowrap' && raw) ? ` title="${escapeHtml(raw)}"` : '';
+    // 户籍地区占满整行，加宽保证单行完整显示
+    const kvCls = k === 'full_region' ? ' kv-wide' : '';
+    return `<div class="kv${kvCls}"><span class="k">${label}</span><span class="v${cls}"${title}>${valHtml}</span></div>`;
+  }).join('');
 
   // 头部推导信息卡（年龄段 / 人生阶段 / 星座）
   const statAge = person.age != null ? `${person.age} 岁` : '—';
@@ -594,7 +656,7 @@ function validateForm() {
   else if (name.length > 20) { setFieldError('fName', '姓名最长 20 个字符'); okFlag = false; }
 
   if (!cardNo) { setFieldError('fCardNo', '请输入身份证号'); okFlag = false; }
-  else if (!parseCard(cardNo)) { setFieldError('fCardNo', '身份证号需为 15 或 18 位'); okFlag = false; }
+  else if (!parseCard(cardNo) || parseCard(cardNo).len !== 18) { setFieldError('fCardNo', '身份证号需为 18 位'); okFlag = false; }
 
   if (mobile && !/^1\d{10}$/.test(mobile)) { setFieldError('fMobile', '手机号需为 11 位数字，以 1 开头'); okFlag = false; }
 
@@ -617,7 +679,6 @@ async function submitForm(e) {
     const payload = { name, card_no: cardNo, mobile, relation, remark };
     const res = editingId ? await API.update(editingId, payload) : await API.create(payload);
     if (!res.ok) throw new Error(res.message || '保存失败');
-    setMode(res.mode);
     toast(editingId ? '档案已更新' : '档案已创建');
     // 若新增，默认回到第一页查看新记录
     const gotoFirst = !editingId;
@@ -652,7 +713,6 @@ async function confirmDelete() {
   try {
     const res = await API.remove(deleteTargetId);
     if (!res.ok) throw new Error(res.message || '删除失败');
-    setMode(res.mode);
     toast('档案已删除');
     closeDelete();
     await load(false);
@@ -669,6 +729,7 @@ function openCustomRelDialog() {
   els.fCustomRelLabel.value = '';
   els.customRelErr.textContent = '';
   els.fCustomRelLabel.classList.remove('invalid');
+  renderRelList();
   els.relDialog.hidden = false;
   els.relOverlay.hidden = false;
   setTimeout(() => els.fCustomRelLabel.focus(), 50);
@@ -677,7 +738,66 @@ function closeCustomRelDialog() {
   els.relDialog.hidden = true;
   els.relOverlay.hidden = true;
 }
-function confirmAddCustomRel() {
+
+// 渲染「关系管理」对话框中已有自定义关系列表（含删除按钮）
+function renderRelList() {
+  const customs = FJ_RELATIONS.filter(r => !r.is_builtin);
+  if (!customs.length) {
+    els.relList.innerHTML = '<p class="rel-empty">暂无自定义关系，可在上方添加。</p>';
+    return;
+  }
+  els.relList.innerHTML = customs.map(r => `
+    <div class="rel-row" data-value="${r.value}">
+      <span class="rel-name">${escapeHtml(r.label)}</span>
+      <button type="button" class="btn btn-danger sm" data-del="${r.value}">删除</button>
+    </div>`).join('');
+}
+
+// 删除自定义关系：被引用时弹改派选择，否则直接物理删除
+async function removeRelation(value) {
+  const res = await API.deleteRelation(value);
+  if (res && res.ok) {
+    await loadRelations();
+    renderRelList();
+    toast('关系已删除');
+    return;
+  }
+  if (res && res.code === 'RELATION_IN_USE') {
+    openReassignDialog(value, res.usage);
+    return;
+  }
+  toast((res && res.message) || '删除失败', 'error');
+}
+
+// 改派并删除：先将被引用记录改派到目标关系（null=清空），再物理删除字典项
+let pendingReassignValue = null;
+function openReassignDialog(value, usage) {
+  pendingReassignValue = value;
+  els.relReassignSub.textContent = `该关系被 ${usage} 条记录引用。删除前请选择改派目标（被引用记录将改派到所选关系）。`;
+  const opts = [
+    { value: 'null', label: '无关系（清空关系）' },
+    ...FJ_RELATIONS.filter(r => r.value !== value).map(r => ({ value: String(r.value), label: r.label }))
+  ];
+  els.relReassignTarget.innerHTML = opts.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join('');
+  els.relReassignDialog.hidden = false;
+  els.relReassignOverlay.hidden = false;
+}
+function closeReassignDialog() {
+  els.relReassignDialog.hidden = true;
+  els.relReassignOverlay.hidden = true;
+  pendingReassignValue = null;
+}
+async function confirmReassignDelete() {
+  if (pendingReassignValue == null) return;
+  const target = els.relReassignTarget.value; // 'null' 或 value
+  const res = await API.deleteRelation(pendingReassignValue, target);
+  if (!res || !res.ok) { toast((res && res.message) || '删除失败', 'error'); return; }
+  closeReassignDialog();
+  await loadRelations();
+  renderRelList();
+  toast('关系已删除（被引用记录已改派）');
+}
+async function confirmAddCustomRel() {
   const label = els.fCustomRelLabel.value.trim().replace(/（/g, '(').replace(/）/g, ')');
   const errEl = els.customRelErr;
   const inputEl = els.fCustomRelLabel;
@@ -686,35 +806,167 @@ function confirmAddCustomRel() {
   if (!label) { errEl.textContent = '请输入关系名称'; inputEl.classList.add('invalid'); return; }
   if (label.length > 10) { errEl.textContent = '名称最长 10 个字符'; inputEl.classList.add('invalid'); return; }
 
-  const customs = getCustomRelations();
-  // 先从「已存在同名」中命中优先（不重复新增）
-  const builtin = BASE_RELATIONS.find(r => r.label === label);
-  if (builtin) { errEl.textContent = `已存在相同关系：${label}`; inputEl.classList.add('invalid'); return; }
-  const existing = customs.find(c => c.label === label);
-  if (existing) {
-    // 选上它然后关闭
-    setRelationChecked(existing.value);
+  // 从云端字典命中已存在同名（含内置）
+  const exists = FJ_RELATIONS.find(r => r.label === label);
+  if (exists) {
+    setRelationChecked(exists.value);
     closeCustomRelDialog();
-    toast('已选择现有自定义关系');
+    toast('已选择现有关系');
     return;
   }
-  if (customs.length >= CUSTOM_MAX) {
+  const customCount = FJ_RELATIONS.filter(r => !r.is_builtin).length;
+  if (customCount >= CUSTOM_MAX) {
     errEl.textContent = `自定义关系已达上限 ${CUSTOM_MAX} 个，请先移除不再使用的关系`;
     inputEl.classList.add('invalid');
     return;
   }
-  // 自定义关系编号使用负整数，避免与系统内置 0~5 冲突（MySQL 的 fj_id_card.relation 是 int，可以为负）
-  let nextVal = -1;
-  const existingValues = new Set(customs.map(c => c.value));
-  while (existingValues.has(nextVal)) nextVal -= 1;
-  const newRel = { value: nextVal, label, custom: true };
-  const updated = [newRel, ...customs].slice(0, CUSTOM_MAX);
-  saveCustomRelations(updated);
-  buildRelationRadios();
-  renderFilters();
-  setRelationChecked(nextVal);
-  closeCustomRelDialog();
-  toast(`已添加自定义关系：${label}`);
+  els.btnRelConfirm.disabled = true;
+  try {
+    const res = await API.createRelation(label);
+    if (!res || !res.ok) throw new Error((res && res.message) || '添加失败');
+    await loadRelations();          // 刷新云端字典 + 重建 radios/filters
+    setRelationChecked(res.data.value);
+    closeCustomRelDialog();
+    toast(`已添加关系：${label}`);
+  } catch (e) {
+    errEl.textContent = e.message || '添加失败';
+    inputEl.classList.add('invalid');
+  } finally {
+    els.btnRelConfirm.disabled = false;
+  }
+}
+
+// ---------- 批量导入 ----------
+let importItems = [];      // 当前待导入数据（解析自所选文件）
+let importLoaded = false;  // 是否已成功解析出可导入数据
+
+function openImportDialog() {
+  importItems = [];
+  importLoaded = false;
+  els.importFile.value = '';
+  els.importFileName.textContent = '';
+  els.importErr.textContent = '';
+  els.importErr2.textContent = '';
+  els.importResult.hidden = true;
+  els.importResult.innerHTML = '';
+  els.btnImportSubmit.disabled = true;
+  els.btnImportSubmit.textContent = '开始导入';
+  els.importDialog.hidden = false;
+  els.importOverlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+function closeImportDialog() {
+  els.importDialog.hidden = true;
+  els.importOverlay.hidden = true;
+  document.body.style.overflow = '';
+  els.importFile.value = '';
+}
+
+// 下载导入模板（.xlsx，含表头与一行示例）
+function downloadImportTemplate() {
+  if (!window.XLSX) {
+    toast('导入组件未加载，请刷新页面后重试（或手动创建 CSV：表头 姓名,身份证号,手机号,关系,备注）', 'error');
+    return;
+  }
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['姓名', '身份证号', '手机号', '关系', '备注'],
+    ['张三', '110101199001011234', '13800138000', '亲属', '示例数据，可删除本行']
+  ]);
+  ws['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 24 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '导入模板');
+  XLSX.writeFile(wb, '身份导入模板.xlsx');
+}
+
+// 解析文件（.xlsx/.xls/.csv）→ items：[{name, card_no, mobile, relation, remark}]
+async function parseImportFile(file) {
+  if (!window.XLSX) throw new Error('导入组件未加载，请刷新页面后重试');
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) throw new Error('文件中没有可读取的工作表');
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+  if (!aoa.length) throw new Error('文件内容为空');
+  const head = (aoa[0] || []).map(h => String(h == null ? '' : h).trim());
+  const idx = {
+    name: head.indexOf('姓名'),
+    card: head.indexOf('身份证号'),
+    mobile: head.indexOf('手机号'),
+    relation: head.indexOf('关系'),
+    remark: head.indexOf('备注')
+  };
+  if (idx.name < 0 || idx.card < 0) {
+    throw new Error('模板表头需包含「姓名」「身份证号」（手机号/关系/备注可选），请下载模板后填写');
+  }
+  const items = [];
+  for (let i = 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    const isEmpty = !row || row.every(c => String(c == null ? '' : c).trim() === '');
+    if (isEmpty) continue;
+    const get = (k) => (idx[k] >= 0 && row[idx[k]] != null ? String(row[idx[k]]).trim() : '');
+    items.push({ name: get('name'), card_no: get('card'), mobile: get('mobile'), relation: get('relation'), remark: get('remark') });
+  }
+  if (!items.length) throw new Error('文件中没有可导入的数据行');
+  return items;
+}
+
+async function handleImportFile(file) {
+  try {
+    if (!file) throw new Error('请选择文件');
+    importItems = await parseImportFile(file);
+    importLoaded = true;
+    els.importFileName.textContent = `已选：${file.name}（${importItems.length} 条数据）`;
+    els.importErr.textContent = '';
+    els.btnImportSubmit.disabled = false;
+  } catch (e) {
+    importItems = [];
+    importLoaded = false;
+    els.importFileName.textContent = '';
+    els.btnImportSubmit.disabled = true;
+    els.importErr.textContent = e.message || '文件解析失败，请检查格式';
+  }
+}
+
+// 校验失败明细渲染（导入弹窗内，红底列表，最多展示 20 条）
+function renderImportErrors(errors) {
+  const list = (errors || []).map(e =>
+    `<div class="import-err-item"><span class="ie-row">第 ${e.row} 行</span><span class="ie-name">${escapeHtml(e.name || '(未命名)')}</span><span class="ie-msg">${escapeHtml(e.msg)}</span></div>`
+  ).join('');
+  const total = (errors || []).length;
+  const more = total > 20 ? `<div class="import-err-more">… 其余 ${total - 20} 条未展示，请修正后重新导入</div>` : '';
+  els.importResult.hidden = false;
+  els.importResult.className = 'import-result err';
+  els.importResult.innerHTML = `<div class="import-err-sum">共 ${total} 条数据存在异常，本次未导入任何数据</div>${list}${more}`;
+}
+
+async function submitImport() {
+  if (!importLoaded || !importItems.length) return;
+  els.btnImportSubmit.disabled = true;
+  els.btnImportSubmit.textContent = '导入中…';
+  els.importErr2.textContent = '';
+  try {
+    const res = await API.importCards(importItems);
+    if (!res.ok) {
+      if (res.code === 'IMPORT_INVALID') {
+        renderImportErrors(res.errors);
+        throw new Error(res.message || '部分数据异常，未导入');
+      }
+      throw new Error(res.message || '导入失败');
+    }
+    const n = Number(res.data && res.data.imported) || 0;
+    const newRels = Number(res.data && res.data.newRelations) || 0;
+    toast(`导入成功 ${n} 条`);
+    closeImportDialog();
+    loadRelations(); // 导入可能自动新增了关系，刷新关系字典
+    load(true);      // 回到第一页查看新导入记录
+  } catch (e) {
+    if (importLoaded) {
+      els.importErr2.textContent = e.message || '导入失败';
+    }
+  } finally {
+    els.btnImportSubmit.disabled = false;
+    els.btnImportSubmit.textContent = '开始导入';
+  }
 }
 
 // ---------- 事件绑定 ----------
@@ -722,21 +974,40 @@ function bindEvents() {
   els.btnRefresh.addEventListener('click', () => load(false));
   els.btnAdd.addEventListener('click', openCreate);
 
-  els.search.addEventListener('input', (e) => {
-    const val = e.target.value.trim();
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      state.q = val;
-      state.page = 1;
-      load(false);
-    }, 220);
+  // 需求：筛选条件输入关键字后，按回车键才触发检索
+  els.search.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    state.q = e.target.value.trim();
+    state.page = 1;
+    load(false);
   });
 
-  // 筛选 chips
+  // 需求：点击搜索框右侧原生清除按钮（x）清空关键词后，触发无关键词检索
+  // type="search" 的原生 x 清除会触发 search 事件；手动清空再回车则走上方 keydown 分支
+  els.search.addEventListener('search', (e) => {
+    const v = e.target.value.trim();
+    // 仅当关键词真的变化时才重新查询，避免重复加载
+    if (v === state.q) return;
+    state.q = v;
+    state.page = 1;
+    load(false);
+  });
+
+  // 筛选 chips：关系 chip 与 待补手机号 chip 可同时选中；点击「全部」清空全部筛选
   els.filters.addEventListener('click', (e) => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
-    state.filter = chip.dataset.key;
+    const key = chip.dataset.key;
+    if (key === 'all') {
+      state.relationFilter = null;
+      state.nomobileFilter = false;
+    } else if (key === 'nomobile') {
+      state.nomobileFilter = !state.nomobileFilter;
+    } else {
+      // 关系 chip：再次点击同一 chip 取消选中
+      state.relationFilter = (state.relationFilter === key) ? null : key;
+    }
     state.page = 1;
     renderFilters();
     load(false);
@@ -799,13 +1070,55 @@ function bindEvents() {
   els.fCustomRelLabel.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); confirmAddCustomRel(); }
   });
+  // 关系管理：列表删除
+  els.relList.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-del]');
+    if (!btn) return;
+    removeRelation(Number(btn.dataset.del));
+  });
+  // 改派并删除弹窗
+  els.btnRelReassignConfirm.addEventListener('click', confirmReassignDelete);
+  els.btnRelReassignCancel.addEventListener('click', closeReassignDialog);
+  els.relReassignOverlay.addEventListener('click', closeReassignDialog);
+  els.relReassignDialog.querySelector('.icon-btn').addEventListener('click', closeReassignDialog);
+
+  // 批量导入身份
+  els.btnImport.addEventListener('click', openImportDialog);
+  els.btnImportClose.addEventListener('click', closeImportDialog);
+  els.btnImportCancel.addEventListener('click', closeImportDialog);
+  els.importOverlay.addEventListener('click', closeImportDialog);
+  els.btnDownloadTemplate.addEventListener('click', downloadImportTemplate);
+  els.importDrop.addEventListener('click', () => els.importFile.click());
+  els.importDrop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.importFile.click(); }
+  });
+  // 拖拽选择文件
+  ['dragenter', 'dragover'].forEach(ev => els.importDrop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    els.importDrop.classList.add('dragover');
+  }));
+  ['dragleave', 'drop'].forEach(ev => els.importDrop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    els.importDrop.classList.remove('dragover');
+  }));
+  els.importDrop.addEventListener('drop', (e) => {
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleImportFile(f);
+  });
+  els.importFile.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) handleImportFile(f);
+  });
+  els.btnImportSubmit.addEventListener('click', submitImport);
 
   // Esc 关闭
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (!els.relDialog.hidden) closeCustomRelDialog();
+      else if (!els.relReassignDialog.hidden) closeReassignDialog();
       else if (!els.delDialog.hidden) closeDelete();
       else if (!els.detailDialog.hidden) closeDetail();
+      else if (!els.importDialog.hidden) closeImportDialog();
       else if (!els.drawer.hidden) closeDrawer();
     }
   });
@@ -815,6 +1128,7 @@ function bindEvents() {
 buildRelationRadios();
 renderFilters();
 bindEvents();
+loadRelations(); // 拉取云端关系字典（跨设备共享），成功后重建 radios/filters
 
 // 列表懒加载：进入列表视图（且已通过登录鉴权）时首次加载，由 auth.js 引导触发
 if (window.APP_VIEW) {

@@ -39,14 +39,6 @@
     if (!res.ok || !j.ok) throw new Error(j.message || res.statusText || '操作失败');
     return j;
   }
-  function toast(msg, type) {
-    let t = document.getElementById('toast');
-    if (!t) return alert(msg);
-    t.textContent = msg;
-    t.className = 'toast show' + (type === 'error' ? ' error' : '');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => { t.className = 'toast'; }, 2600);
-  }
   function openOverlay(id) { const o = document.getElementById(id); if (o) o.hidden = false; }
   function closeOverlay(id) { const o = document.getElementById(id); if (o) o.hidden = true; }
 

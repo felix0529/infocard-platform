@@ -5,7 +5,7 @@
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const { repo, initMysql, testConnection, getMode, setMode } = require('./db');
+const { repo, initMysql, testConnection, getEnvInfo, initRelationTable, syncTableComments, rebuildInfoView, listRelations, createRelation, deleteRelation } = require('./db');
 const { parseIdCard } = require('./idcard');
 const { requireAuth, requirePerm } = require('./auth');
 const { authRouter, rbacRouter } = require('./rbac');
@@ -16,9 +16,11 @@ const PORT = process.env.PORT || 5173;
 app.use(cors());
 app.use(express.json());
 
-// 静态托管前端
+// 静态托管前端（no-cache：强制浏览器每次向服务器校验版本，避免缓存旧版 JS/CSS 导致功能与接口口径不一致）
 const publicDir = path.join(__dirname, '..', 'public');
-app.use(express.static(publicDir));
+app.use(express.static(publicDir, {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+}));
 
 // 静态托管地图 geoJSON（ECharts 省市地图）
 app.use('/maps', express.static(path.join(__dirname, '..', 'public', 'maps')));
@@ -26,13 +28,18 @@ app.use('/maps', express.static(path.join(__dirname, '..', 'public', 'maps')));
 // 认证路由（login 公开；me/logout 内部自校验）
 app.use('/api/auth', authRouter);
 
+// 环境信息（公开，登录页/首页徽标使用）
+app.get('/api/env', (req, res) => {
+  res.json({ ok: true, data: getEnvInfo() });
+});
+
 // 除登录外的所有 /api 均需登录
 app.use('/api', requireAuth);
 
 // 系统管理（RBAC）——用户管理 / 角色管理
 app.use('/api/system', rbacRouter);
 
-const ok = (data, meta = {}) => ({ ok: true, data, mode: getMode(), ...meta });
+const ok = (data, meta = {}) => ({ ok: true, data, env: getEnvInfo(), ...meta });
 const fail = (msg, status = 400) => {
   const e = new Error(msg);
   e.status = status;
@@ -55,7 +62,7 @@ function validate(body, partial = false) {
     if (!v.card_no) errors.push('身份证号不能为空');
     else {
       const p = parseIdCard(v.card_no);
-      if (!p || p.invalid || (p.cardLen !== 15 && p.cardLen !== 18)) errors.push('身份证号格式不正确（需 15 或 18 位）');
+      if (!p || p.invalid || p.cardLen !== 18) errors.push('身份证号格式不正确（需为 18 位）');
     }
   } else v.card_no = undefined;
 
@@ -81,11 +88,21 @@ function asyncWrap(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-// 解析看板全局筛选参数（hasRecord: all/yes/no；regYear: 4 位数字或 null）
+// 解析看板全局筛选参数（hasRecord: all/yes/no；relations: 逗号分隔的关系值，含 'null' 表示无关系）
 function parseDashScope(qs) {
   const hasRecord = ['yes', 'no'].includes(qs.hasRecord) ? qs.hasRecord : 'all';
-  const regYear = qs.regYear && /^\d{4}$/.test(String(qs.regYear)) ? String(qs.regYear) : null;
-  return { hasRecord, regYear };
+  let relations = null;
+  if (qs.relations != null && qs.relations !== '') {
+    const parts = String(qs.relations).split(',').map(s => s.trim()).filter(Boolean);
+    if (parts.length) {
+      relations = [];
+      for (const p of parts) {
+        if (p === 'null') relations.push('null');
+        else if (/^-?\d+$/.test(p)) relations.push(p);
+      }
+    }
+  }
+  return { hasRecord, relations };
 }
 
 // 解析看板图表点击下钻的维度过滤参数（值来源为图表自身聚合结果，仍做白名单/格式校验）
@@ -118,7 +135,6 @@ app.get('/api/id-cards', requirePerm('idcard:list'), asyncWrap(async (req, res) 
   });
   res.json({
     ok: true,
-    mode: getMode(),
     data: result.rows,
     total: result.total,
     page: result.page,
@@ -128,19 +144,51 @@ app.get('/api/id-cards', requirePerm('idcard:list'), asyncWrap(async (req, res) 
 }));
 
 app.get('/api/id-cards/stats', requirePerm('idcard:list'), asyncWrap(async (req, res) => {
-  const s = await repo.stats();
-  res.json({ ok: true, mode: getMode(), ...s });
+  const { q, relation, nomobile } = req.query;
+  const s = await repo.stats({
+    q: q || undefined,
+    relation: relation != null ? relation : undefined,
+    nomobile: nomobile ? '1' : undefined
+  });
+  res.json({ ok: true, ...s });
+}));
+
+// ---------- 关系字典（单一数据源：内置 0~5 + 自定义负整数） ----------
+app.get('/api/relations', requirePerm('idcard:list'), asyncWrap(async (req, res) => {
+  // useCache=false：确保新增/改名/删除后前端立即可见最新字典
+  const rows = await listRelations(false);
+  res.json({ ok: true, data: rows });
+}));
+
+app.post('/api/relations', requirePerm('idcard:edit'), asyncWrap(async (req, res) => {
+  const createdBy = (req.user && req.user.id) || null;
+  const r = await createRelation((req.body || {}).label, createdBy);
+  res.status(201).json({ ok: true, data: r });
+}));
+
+app.delete('/api/relations/:value', requirePerm('idcard:edit'), asyncWrap(async (req, res) => {
+  // reassignTo 可省略（被引用则拦截 409）；或传 'null'（置空）/ 目标 value（改派后删）
+  const reassignTo = req.query.reassignTo !== undefined ? req.query.reassignTo : undefined;
+  try {
+    const r = await deleteRelation(req.params.value, reassignTo);
+    res.json({ ok: true, data: r });
+  } catch (e) {
+    if (e.code === 'RELATION_IN_USE') {
+      res.status(409).json({ ok: false, code: 'RELATION_IN_USE', usage: e.usage, message: e.message });
+      return;
+    }
+    throw e;
+  }
 }));
 
 // ---------- 看板分析 ----------
 app.get('/api/dashboard/stats', requirePerm('dashboard:view'), asyncWrap(async (req, res) => {
   const scope = parseDashScope(req.query);
-  const [person, mobile, regYears] = await Promise.all([
+  const [person, mobile] = await Promise.all([
     repo.dashboard(scope),
-    repo.dashboardMobile(scope),
-    repo.dashboardRegYears(scope)
+    repo.dashboardMobile(scope)
   ]);
-  res.json({ ok: true, mode: getMode(), data: { person, mobile, regYears } });
+  res.json({ ok: true, data: { person, mobile } });
 }));
 
 app.get('/api/dashboard/region', requirePerm('dashboard:view'), asyncWrap(async (req, res) => {
@@ -148,7 +196,7 @@ app.get('/api/dashboard/region', requirePerm('dashboard:view'), asyncWrap(async 
   const parent = String(req.query.parent || '');
   const scope = parseDashScope(req.query);
   const data = await repo.dashboardRegionTree(level, parent, scope);
-  res.json({ ok: true, mode: getMode(), data });
+  res.json({ ok: true, data });
 }));
 
 app.get('/api/dashboard/people', requirePerm('dashboard:view'), asyncWrap(async (req, res) => {
@@ -156,9 +204,10 @@ app.get('/api/dashboard/people', requirePerm('dashboard:view'), asyncWrap(async 
   const filters = parseDashFilters(req.query);
   const result = await repo.dashboardPeople({
     level: req.query.level, parent: req.query.parent,
-    scope, page: req.query.page, pageSize: req.query.pageSize, filters
+    scope, page: req.query.page, pageSize: req.query.pageSize, filters,
+    q: req.query.q
   });
-  res.json({ ok: true, mode: getMode(), data: result });
+  res.json({ ok: true, data: result });
 }));
 
 app.get('/api/id-cards/:id', requirePerm('idcard:list'), asyncWrap(async (req, res) => {
@@ -173,6 +222,21 @@ app.get('/api/id-cards/:id/detail', requirePerm('idcard:list'), asyncWrap(async 
   if (!person) throw fail('未找到该记录', 404);
   const { cdsgus, ...rest } = person;
   res.json(ok({ person: rest, cdsgus }));
+}));
+
+// 批量导入人员：校验口径与手动新增一致；任一数据异常则整体不导入（详见 db.importBatch）
+app.post('/api/id-cards/import', requirePerm('idcard:edit'), asyncWrap(async (req, res) => {
+  const items = Array.isArray((req.body || {}).items) ? req.body.items : [];
+  try {
+    const result = await repo.importBatch(items, (req.user && req.user.id) || null);
+    res.json(ok(result));
+  } catch (e) {
+    if (e.code === 'IMPORT_INVALID') {
+      res.status(422).json({ ok: false, code: 'IMPORT_INVALID', message: e.message, errors: e.errors || [] });
+      return;
+    }
+    throw e;
+  }
 }));
 
 app.post('/api/id-cards', requirePerm('idcard:edit'), asyncWrap(async (req, res) => {
@@ -199,26 +263,29 @@ app.delete('/api/id-cards/:id', requirePerm('idcard:edit'), asyncWrap(async (req
 // ---------- 错误处理 ----------
 app.use((err, req, res, next) => {
   console.error('[error]', err);
-  res.status(err.status || 500).json({ ok: false, message: err.message || '服务器错误', mode: getMode() });
+  res.status(err.status || 500).json({ ok: false, message: err.message || '服务器错误', env: getEnvInfo() });
 });
 
 // ---------- 启动 ----------
 async function start() {
   initMysql();
+  const env = getEnvInfo();
   const connected = await testConnection();
-  setMode(connected ? 'mysql' : 'demo');
-  if (connected) {
-    console.log(`[db] 已连接 MySQL (${DB_NAME()}) — 使用真实 fj_id_card 表`);
-  } else {
-    console.log(`[db] 未连接 MySQL — 使用演示数据回退 (${process.env.DB_USER || 'root'}:${process.env.DB_PASSWORD ? '***' : '(空)'}@${process.env.DB_HOST || '127.0.0.1'})。可用环境变量 DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME 接入真实库。`);
+  if (!connected) {
+    // 已移除演示数据回退：MySQL 连接失败即退出，避免在无数据库状态下提供服务
+    console.error(`[db] MySQL 连接失败，进程退出。请检查 ${env.profile === 'prod' ? '.env.prod' : '.env'} 配置（host/port/user/password/database）。`);
+    process.exit(1);
   }
+  console.log(`[db] 已连接 MySQL — 环境[${env.name}] (${env.profile}) — 数据库 ${env.database}`);
+  // 初始化改为后台异步执行,不阻塞服务启动:
+  // 生产库 fj_id_card/cdsgus 等大表 ALTER 较慢,await 会拖垮启动甚至触发环境回收。
+  // 初始化失败不影响服务运行(注释/视图均不影响业务功能),仅记录日志。
+  initRelationTable().catch(e => console.error('[db] initRelationTable 失败:', e.message));
+  syncTableComments().catch(e => console.error('[db] syncTableComments 失败:', e.message));
+  rebuildInfoView().catch(e => console.error('[db] rebuildInfoView 失败:', e.message));
   app.listen(PORT, () => {
     console.log(`[server] fj_id_card 身份信息管理已启动: http://localhost:${PORT}`);
   });
-}
-
-function DB_NAME() {
-  return process.env.DB_NAME || 'infocard_test';
 }
 
 start();

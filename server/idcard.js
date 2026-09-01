@@ -69,19 +69,4 @@ function parseIdCard(raw) {
   return { cardNo, cardLen: 0, regionCode: '', regionName: '—', birthDateStr: '', birth: '—', genderCode: null, genderName: '—', invalid: true };
 }
 
-const RELATIONS = [
-  { value: 0, label: '亲属' },
-  { value: 1, label: '朋友' },
-  { value: 2, label: '同事(瑞联)' },
-  { value: 3, label: '同事(优品)' },
-  { value: 4, label: '同事(大自然)' },
-  { value: 5, label: '同事(财税)' },
-  { value: null, label: '其他' }
-];
-
-function relationLabel(v) {
-  const found = RELATIONS.find(r => r.value === v);
-  return found ? found.label : '其他';
-}
-
-module.exports = { parseIdCard, regionName, RELATIONS, relationLabel };
+module.exports = { parseIdCard };

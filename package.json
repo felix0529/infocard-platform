@@ -7,7 +7,12 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node server/index.js"
+    "dev": "node server/index.js",
+    "start:test": "node server/index.js",
+    "start:prod": "PORT=5174 node server/index.js --prod",
+    "serve": "node server/index.js",
+    "serve:test": "node server/index.js",
+    "serve:prod": "PORT=5174 node server/index.js --prod"
   },
   "dependencies": {
     "cors": "^2.8.5",
